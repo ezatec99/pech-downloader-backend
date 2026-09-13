@@ -19,35 +19,57 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ── Load YouTube Cookies if configured in Render Environment ──
+def get_yt_opts(extra_format=None):
+    opts = {
+        'quiet': True,
+        'no_warnings': True,
+        'http_headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+            'Accept-Language': 'en-US,en;q=0.9',
+        }
+    }
+    if extra_format:
+        opts['format'] = extra_format
+
+    # Check for cookies in Environment Variable or local file
+    cookie_env = os.environ.get("YOUTUBE_COOKIE", "").strip()
+    if cookie_env:
+        cookie_path = os.path.join(os.getcwd(), "cookies.txt")
+        with open(cookie_path, "w", encoding="utf-8") as f:
+            f.write(cookie_env)
+        opts['cookiefile'] = cookie_path
+    elif os.path.exists("cookies.txt"):
+        opts['cookiefile'] = "cookies.txt"
+    else:
+        # Fallback when no cookies: use mobile player clients
+        opts['extractor_args'] = {
+            'youtube': {
+                'player_client': ['android', 'mweb', 'ios'],
+                'player_skip': ['webpage', 'configs'],
+            }
+        }
+        
+    return opts
+
 
 @app.get("/")
 def home():
+    has_cookie = bool(os.environ.get("YOUTUBE_COOKIE") or os.path.exists("cookies.txt"))
     return {
         "status": "Online",
         "service": "PECH Tool Extractor & Downloader API",
+        "has_youtube_cookie": has_cookie,
         "version": "1.0.0"
     }
 
 
 @app.get("/api/info")
+@app.get("/info")
 def get_media_info(url: str = Query(..., description="Media URL")):
     """Extract media title, duration, thumbnail, and stream formats using yt-dlp."""
     try:
-        ydl_opts = {
-            'quiet': True,
-            'no_warnings': True,
-            'extract_flat': False,
-            'extractor_args': {
-                'youtube': {
-                    'player_client': ['android', 'ios', 'mweb'],
-                    'player_skip': ['webpage', 'configs', 'js'],
-                }
-            },
-            'http_headers': {
-                'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
-                'Accept-Language': 'en-US,en;q=0.9',
-            }
-        }
+        ydl_opts = get_yt_opts()
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
             
@@ -81,21 +103,7 @@ def get_media_info(url: str = Query(..., description="Media URL")):
 def download_stream(url: str = Query(..., description="Media URL to download as MP4")):
     """Directly stream and download the MP4 media file to the user's browser."""
     try:
-        ydl_opts = {
-            'quiet': True,
-            'no_warnings': True,
-            'format': 'best[ext=mp4]/best',
-            'extractor_args': {
-                'youtube': {
-                    'player_client': ['android', 'ios', 'mweb'],
-                    'player_skip': ['webpage', 'configs', 'js'],
-                }
-            },
-            'http_headers': {
-                'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
-                'Accept-Language': 'en-US,en;q=0.9',
-            }
-        }
+        ydl_opts = get_yt_opts(extra_format='best[ext=mp4]/best')
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
             title = info.get("title", "media")
@@ -115,7 +123,7 @@ def download_stream(url: str = Query(..., description="Media URL to download as 
                 raise HTTPException(status_code=404, detail="Stream URL not found")
 
             # Stream the media content directly to the client browser
-            req = requests.get(stream_url, stream=True, headers={'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36'})
+            req = requests.get(stream_url, stream=True, headers={'User-Agent': 'Mozilla/5.0'})
             
             def iterfile():
                 for chunk in req.iter_content(chunk_size=64 * 1024):
