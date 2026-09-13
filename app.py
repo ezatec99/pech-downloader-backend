@@ -37,6 +37,16 @@ def get_media_info(url: str = Query(..., description="Media URL")):
             'quiet': True,
             'no_warnings': True,
             'extract_flat': False,
+            'extractor_args': {
+                'youtube': {
+                    'player_client': ['android', 'ios', 'mweb'],
+                    'player_skip': ['webpage', 'configs', 'js'],
+                }
+            },
+            'http_headers': {
+                'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+                'Accept-Language': 'en-US,en;q=0.9',
+            }
         }
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
@@ -67,6 +77,7 @@ def get_media_info(url: str = Query(..., description="Media URL")):
 
 
 @app.get("/api/download")
+@app.get("/download")
 def download_stream(url: str = Query(..., description="Media URL to download as MP4")):
     """Directly stream and download the MP4 media file to the user's browser."""
     try:
@@ -74,6 +85,16 @@ def download_stream(url: str = Query(..., description="Media URL to download as 
             'quiet': True,
             'no_warnings': True,
             'format': 'best[ext=mp4]/best',
+            'extractor_args': {
+                'youtube': {
+                    'player_client': ['android', 'ios', 'mweb'],
+                    'player_skip': ['webpage', 'configs', 'js'],
+                }
+            },
+            'http_headers': {
+                'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+                'Accept-Language': 'en-US,en;q=0.9',
+            }
         }
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
@@ -94,7 +115,7 @@ def download_stream(url: str = Query(..., description="Media URL to download as 
                 raise HTTPException(status_code=404, detail="Stream URL not found")
 
             # Stream the media content directly to the client browser
-            req = requests.get(stream_url, stream=True, headers={'User-Agent': 'Mozilla/5.0'})
+            req = requests.get(stream_url, stream=True, headers={'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36'})
             
             def iterfile():
                 for chunk in req.iter_content(chunk_size=64 * 1024):
