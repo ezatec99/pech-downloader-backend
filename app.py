@@ -19,6 +19,36 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+import base64
+
+def normalize_cookies(raw_text):
+    """Ensure cookie text is valid tab-separated Netscape format even if Render converts tabs to spaces or if Base64 encoded."""
+    if not raw_text:
+        return ""
+    raw_text = raw_text.strip()
+    try:
+        decoded = base64.b64decode(raw_text).decode('utf-8', errors='ignore')
+        if 'youtube.com' in decoded or 'LOGIN_INFO' in decoded or 'SID' in decoded:
+            raw_text = decoded
+    except Exception:
+        pass
+
+    lines = raw_text.splitlines()
+    out = ["# Netscape HTTP Cookie File", "# This is a generated file! Do not edit."]
+    for line in lines:
+        sline = line.strip()
+        if not sline or sline.startswith('#'):
+            continue
+        parts = sline.split()
+        if len(parts) >= 7:
+            domain, flag, path, secure, exp, name = parts[:6]
+            val = ' '.join(parts[6:])
+            out.append(f"{domain}\t{flag}\t{path}\t{secure}\t{exp}\t{name}\t{val}")
+        elif '\t' in line:
+            out.append(sline)
+    return "\n".join(out)
+
+
 # ── Load YouTube Cookies if configured in Render Environment ──
 def get_yt_opts(extra_format=None):
     opts = {
@@ -32,17 +62,16 @@ def get_yt_opts(extra_format=None):
     if extra_format:
         opts['format'] = extra_format
 
-    # Check for cookies in Environment Variable or local file
-    cookie_env = os.environ.get("YOUTUBE_COOKIE", "").strip()
-    if cookie_env:
+    cookie_env = os.environ.get("YOUTUBE_COOKIE", "") or os.environ.get("PECH_COOKIES_B64", "")
+    if cookie_env.strip():
         cookie_path = os.path.join(os.getcwd(), "cookies.txt")
+        normalized = normalize_cookies(cookie_env)
         with open(cookie_path, "w", encoding="utf-8") as f:
-            f.write(cookie_env)
+            f.write(normalized)
         opts['cookiefile'] = cookie_path
     elif os.path.exists("cookies.txt"):
         opts['cookiefile'] = "cookies.txt"
     else:
-        # Fallback when no cookies: use mobile player clients
         opts['extractor_args'] = {
             'youtube': {
                 'player_client': ['android', 'mweb', 'ios'],
